@@ -15,9 +15,8 @@ class Joint {
         // Instance variables
         float length;
         Vector rotation;
-        Joint *inboard, *outboard;
 
         // Constructors
         Joint();
-        Joint(float, Vector, Joint*, Joint*);
+        Joint(float, Vector);
 };

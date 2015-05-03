@@ -17,7 +17,6 @@
 #include <Eigen3/Eigen/Core>
 #include <Eigen3/Eigen/SVD>
 
-
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -43,7 +42,98 @@ unsigned int mode = GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH;;
 float lpos[] = {1000, 1000, 1000, 0};
 
 std::vector<Joint> jointlist;
+Vector systemend;
 Vector goal;
+float stepsize = 0.1;
+
+//****************************************************
+// Inverse Kinematics Solver
+//****************************************************
+
+MatrixXf pseudoinvert(MatrixXf m) {
+    JacobiSVD<MatrixXf> svd(m, ComputeThinU | ComputeThinV);
+
+    float error = 1e-7;
+    MatrixXf matrixS;
+    matrixS = svd.singularValues().asDiagonal();
+
+    for (int i = 0; i < m.cols() && i < m.rows(); i++) {
+        if (matrixS(i, i) > error) {
+            matrixS(i, i) = 1.0 / matrixS(i, i);
+        }
+    }
+
+    MatrixXf inv;
+    inv = svd.matrixV() * matrixS * svd.matrixU().transpose();
+    return inv;
+}
+
+MatrixXf rotation_matrix(Vector rot) {
+    MatrixXf rtn(3, 3);
+    rtn << 1, 0, 0,
+           0, 1, 0,
+           0, 0, 1;
+
+    float angle = rot.len();
+    Vector rotaxis = rot.normalize();
+
+    MatrixXf K(3, 3);
+    K << 0, -rotaxis.z, rotaxis.y,
+         rotaxis.z, 0, -rotaxis.x,
+         -rotaxis.y, rotaxis.x, 0;
+
+    rtn += sin(angle) * K;
+    rtn += (1 - cos(angle)) * K * K;
+
+    return rtn;
+}
+
+void update_system() {
+    int numJoints = jointlist.size();
+    Vector diff = systemend - goal;
+    diff = diff.normalize() * stepsize;
+    Vector3f diff_c(diff.x, diff.y, diff.z);
+    MatrixXf jacobian(3, 0);
+
+    for (int i = 0; i < numJoints; i++) {
+        Vector3f localp(0, 0, 0);
+        for (int j = numJoints - 1; j >= i; j--) {
+            Joint inter = jointlist.at(j);
+            Vector3f translate(inter.length, 0, 0);
+            localp += translate;
+            localp = rotation_matrix(inter.rotation) * localp;
+        }
+        MatrixXf localjacobian(3, 3);
+        localjacobian << 0, -localp(2), localp(1),
+                         localp(2), 0, -localp(0),
+                         -localp(1), localp(0), 0;
+        for (int k = i - 1; k >= 0; k--) {
+            Joint prev = jointlist.at(k);
+            localjacobian = rotation_matrix(prev.rotation) * localjacobian;
+        }
+        MatrixXf temp(3, jacobian.cols() + 3);
+        temp << jacobian, localjacobian * -1;
+        jacobian = temp;
+    }
+
+    MatrixXf pseudo;
+    pseudo = pseudoinvert(jacobian);
+    MatrixXf dr;
+    dr = pseudo * diff_c;
+
+    for (int i = 0; i < numJoints; i++) {
+        jointlist[i].rotation += Vector(dr(i*3, 0), dr(i*3 + 1, 0), dr(i*3 + 2, 0));
+    }
+
+    Vector3f tempend(0, 0, 0);
+    for (int i = numJoints - 1; i >= 0; i--) {
+        Joint current = jointlist.at(i);
+        Vector3f translate(current.length, 0, 0);
+        tempend += translate;
+        tempend = rotation_matrix(current.rotation) * tempend;
+    }
+    systemend = Vector(tempend(0), tempend(1), tempend(2));
+}
 
 //****************************************************
 // OpenGL Functions
@@ -75,22 +165,22 @@ void display() {
             0, 2, 0,
             0, 1, 0);
 
+    if ((systemend - goal).len() >= stepsize)
+        update_system();
+
     int numJoints = jointlist.size();
 
     for (int i = 0; i < numJoints; i++) {
         Joint current = jointlist.at(i);
         Vector rot = current.rotation;
         float angle = rot.len() * 180 / M_PI;
-        Joint* prev = current.inboard;
-        Vector prevrot;
-        float prevangle;
         glPushMatrix();
-            while (prev) {
-                prevrot = prev->rotation;
-                prevangle = prevrot.len() * 180 / M_PI;
+            for (int j = i - 1; j >= 0; j--) {
+                Joint prev = jointlist.at(j);
+                Vector prevrot = prev.rotation;
+                float prevangle = prevrot.len() * 180 / M_PI;
                 glRotatef(prevangle, prevrot.x, prevrot.y, prevrot.z);
-                glTranslatef(prev->length, 0, 0);
-                prev = prev->inboard;
+                glTranslatef(prev.length, 0, 0);
             }
             glRotatef(angle, rot.x, rot.y, rot.z);
             glPushMatrix();
@@ -137,57 +227,24 @@ void special(int key, int x, int y) {
     glutPostRedisplay();
 }
 
-void test(){
-    MatrixXf m(3,3);
-    m << 0, 0, 0,
-         0, 246, 0,
-         0, 0, 246;
-    std::cout << m;
-    printf("\n");
-    JacobiSVD<MatrixXf> svd(m, ComputeThinU | ComputeThinV);
-    std::cout << "Its left singular vectors are the columns of the thin U matrix:" 
-        << std::endl << svd.matrixU() << std::endl;
-    std::cout << "Singular Values are:" 
-        << std::endl << svd.singularValues() << std::endl;
-
-    float error = 1.e-6;
-     MatrixXf something;
-     something = svd.singularValues().asDiagonal();
-
-    std::cout << "What is this:" << std::endl
-        << something << std::endl;
-
-    for(int i = 0; i < m.cols(); i++){
-        if(something(i, i) > error){
-            something(i, i) = 1.0/something(i, i);
-        }
-     }
-
-     MatrixXf inv;
-     inv = svd.matrixV() * something * svd.matrixU().transpose();
-
-     std::cout << "INVERTED:" 
-        << std::endl << inv << std::endl;
-}
-
 //****************************************************
 // Input Parsing & Main
 //****************************************************
 
 int main(int argc, char *argv[]) {
-    goal = Vector();
-    Joint root = Joint(1, Vector(0, 0, M_PI / 2), NULL, NULL);
-    Joint arm1 = Joint(2, Vector(), &root, NULL);
-    root.outboard = &arm1;
+    goal = Vector(1, 2, 0);
+    Joint root = Joint(1, Vector(0, 0, M_PI / 2));
+    Joint arm1 = Joint(2, Vector());
     jointlist.push_back(root);
     jointlist.push_back(arm1);
+    systemend = Vector(0, 3, 0);
 
     glutInit(&argc, argv);
     glutInitDisplayMode(mode);
     glutInitWindowSize(windowWidth, windowHeight);
     glutInitWindowPosition(0, 0);
     windowID = glutCreateWindow(argv[0]);
-    test();
+
     init();
     glutIdleFunc(glutPostRedisplay);
     glutDisplayFunc(display);
