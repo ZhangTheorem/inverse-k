@@ -65,8 +65,8 @@ void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_MODELVIEW);    
     glLoadIdentity();
-    gluLookAt(0, 0, -3,
-            0, 0, 0,
+    gluLookAt(0, 2, -5,
+            0, 2, 0,
             0, 1, 0);
 
     int numJoints = jointlist.size();
@@ -108,7 +108,7 @@ void reshape(int w, int h) {
     glViewport(0, 0, (GLsizei) w, (GLsizei) h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(90, w / height, 1, 1000);
+    gluPerspective(65, w / height, 1, 1000);
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
