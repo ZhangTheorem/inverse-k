@@ -44,7 +44,7 @@ float lpos[] = {1000, 1000, 1000, 0};
 std::vector<Joint> jointlist;
 Vector systemend;
 Vector goal;
-float stepsize = 0.1;
+float stepsize = 0.01;
 
 //****************************************************
 // Inverse Kinematics Solver
@@ -90,7 +90,7 @@ MatrixXf rotation_matrix(Vector rot) {
 
 void update_system() {
     int numJoints = jointlist.size();
-    Vector diff = systemend - goal;
+    Vector diff = goal - systemend;
     diff = diff.normalize() * stepsize;
     Vector3f diff_c(diff.x, diff.y, diff.z);
     MatrixXf jacobian(3, 0);
@@ -118,6 +118,7 @@ void update_system() {
 
     MatrixXf pseudo;
     pseudo = pseudoinvert(jacobian);
+
     MatrixXf dr;
     dr = pseudo * diff_c;
 
@@ -146,6 +147,16 @@ void junk() {
 };
 
 void init(){
+    int numJoints = jointlist.size();
+    Vector3f tempend(0, 0, 0);
+    for (int i = numJoints - 1; i >= 0; i--) {
+        Joint current = jointlist.at(i);
+        Vector3f translate(current.length, 0, 0);
+        tempend += translate;
+        tempend = rotation_matrix(current.rotation) * tempend;
+    }
+    systemend = Vector(tempend(0), tempend(1), tempend(2));
+
     glEnable(GL_DEPTH_TEST);
 
     glEnable(GL_LIGHT0);
@@ -232,12 +243,22 @@ void special(int key, int x, int y) {
 //****************************************************
 
 int main(int argc, char *argv[]) {
-    goal = Vector(1, 2, 0);
-    Joint root = Joint(1, Vector(0, 0, M_PI / 2));
-    Joint arm1 = Joint(2, Vector());
+    // goal = Vector(1, 2, 0);
+    // Joint root = Joint(1, Vector(0, 0, M_PI / 2));
+    // Joint arm1 = Joint(2, Vector());
+    // jointlist.push_back(root);
+    // jointlist.push_back(arm1);
+    // systemend = Vector(0, 3, 0);
+
+    goal = Vector(1, 1, 1);
+    Joint root = Joint(1, Vector());
+    Joint arm1 = Joint(0.5, Vector());
+    Joint arm2 = Joint(0.25, Vector());
+    Joint arm3 = Joint(0.13, Vector());
     jointlist.push_back(root);
     jointlist.push_back(arm1);
-    systemend = Vector(0, 3, 0);
+    jointlist.push_back(arm2);
+    jointlist.push_back(arm3);
 
     glutInit(&argc, argv);
     glutInitDisplayMode(mode);
@@ -250,7 +271,10 @@ int main(int argc, char *argv[]) {
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
-    glutSpecialFunc(special);    
+    glutSpecialFunc(special);
+
+    update_system();
+    update_system();
 
     glutMainLoop();
 
