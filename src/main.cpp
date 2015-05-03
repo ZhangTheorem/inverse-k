@@ -43,12 +43,18 @@ float lpos[] = {1000, 1000, 1000, 0};
 
 std::vector<Joint> jointlist;
 Vector systemend;
+Vector lastend;
 Vector goal;
-float stepsize = 0.01;
+float t = 0;
+float stepsize = 0.1;
 
 //****************************************************
 // Inverse Kinematics Solver
 //****************************************************
+
+Vector goalFunction(float t) {
+    return Vector(5 * sin(t), 5 * sin(t) * cos(t), 0);
+}
 
 MatrixXf pseudoinvert(MatrixXf m) {
     JacobiSVD<MatrixXf> svd(m, ComputeThinU | ComputeThinV);
@@ -156,6 +162,8 @@ void init(){
         tempend = rotation_matrix(current.rotation) * tempend;
     }
     systemend = Vector(tempend(0), tempend(1), tempend(2));
+    lastend = systemend;
+    goal = goalFunction(t);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -172,12 +180,19 @@ void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_MODELVIEW);    
     glLoadIdentity();
-    gluLookAt(0, 2, -5,
-            0, 2, 0,
+    gluLookAt(0, 0, -5,
+            0, 0, 0,
             0, 1, 0);
 
-    if ((systemend - goal).len() >= stepsize)
+    float iterations = 0;
+
+    while ((goal - systemend).len() >= stepsize) {
         update_system();
+        if ((lastend - systemend).len() < stepsize)
+            break;
+        else
+            lastend = systemend;
+    }
 
     int numJoints = jointlist.size();
 
@@ -186,7 +201,7 @@ void display() {
         Vector rot = current.rotation;
         float angle = rot.len() * 180 / M_PI;
         glPushMatrix();
-            for (int j = i - 1; j >= 0; j--) {
+            for (int j = 0; j < i; j++) {
                 Joint prev = jointlist.at(j);
                 Vector prevrot = prev.rotation;
                 float prevangle = prevrot.len() * 180 / M_PI;
@@ -204,6 +219,9 @@ void display() {
             glutSolidSphere(0.1, 50, 50);
         glPopMatrix();
     }
+
+    t += 0.01;
+    goal = goalFunction(t);
 
     glFlush();
     glutSwapBuffers();
@@ -243,18 +261,10 @@ void special(int key, int x, int y) {
 //****************************************************
 
 int main(int argc, char *argv[]) {
-    // goal = Vector(1, 2, 0);
-    // Joint root = Joint(1, Vector(0, 0, M_PI / 2));
-    // Joint arm1 = Joint(2, Vector());
-    // jointlist.push_back(root);
-    // jointlist.push_back(arm1);
-    // systemend = Vector(0, 3, 0);
-
-    goal = Vector(1, 1, 1);
     Joint root = Joint(1, Vector());
-    Joint arm1 = Joint(0.5, Vector());
-    Joint arm2 = Joint(0.25, Vector());
-    Joint arm3 = Joint(0.13, Vector());
+    Joint arm1 = Joint(0.75, Vector());
+    Joint arm2 = Joint(0.5, Vector());
+    Joint arm3 = Joint(0.25, Vector());
     jointlist.push_back(root);
     jointlist.push_back(arm1);
     jointlist.push_back(arm2);
@@ -272,9 +282,6 @@ int main(int argc, char *argv[]) {
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
     glutSpecialFunc(special);
-
-    update_system();
-    update_system();
 
     glutMainLoop();
 
