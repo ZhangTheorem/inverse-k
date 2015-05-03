@@ -75,7 +75,6 @@ void reshape(int w, int h) {
 }
 
 void keyboard(unsigned char key, int x, int y) {
-    int window[4];
     switch (key) {
         case 27:
             glutDestroyWindow(windowID);
