@@ -14,6 +14,10 @@
 #include <string.h>
 #include <pthread.h>
 
+#include <Eigen3/Eigen/Core>
+#include <Eigen3/Eigen/SVD>
+
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 
@@ -24,6 +28,8 @@
 #ifndef VECTOR_H
 #include "vector.h"
 #endif
+
+using namespace Eigen;
 
 //****************************************************
 // Global Variables
@@ -131,6 +137,39 @@ void special(int key, int x, int y) {
     glutPostRedisplay();
 }
 
+void test(){
+    MatrixXf m(3,3);
+    m << 0, 0, 0,
+         0, 246, 0,
+         0, 0, 246;
+    std::cout << m;
+    printf("\n");
+    JacobiSVD<MatrixXf> svd(m, ComputeThinU | ComputeThinV);
+    std::cout << "Its left singular vectors are the columns of the thin U matrix:" 
+        << std::endl << svd.matrixU() << std::endl;
+    std::cout << "Singular Values are:" 
+        << std::endl << svd.singularValues() << std::endl;
+
+    float error = 1.e-6;
+     MatrixXf something;
+     something = svd.singularValues().asDiagonal();
+
+    std::cout << "What is this:" << std::endl
+        << something << std::endl;
+
+    for(int i = 0; i < m.cols(); i++){
+        if(something(i, i) > error){
+            something(i, i) = 1.0/something(i, i);
+        }
+     }
+
+     MatrixXf inv;
+     inv = svd.matrixV() * something * svd.matrixU().transpose();
+
+     std::cout << "INVERTED:" 
+        << std::endl << inv << std::endl;
+}
+
 //****************************************************
 // Input Parsing & Main
 //****************************************************
@@ -148,7 +187,7 @@ int main(int argc, char *argv[]) {
     glutInitWindowSize(windowWidth, windowHeight);
     glutInitWindowPosition(0, 0);
     windowID = glutCreateWindow(argv[0]);
-
+    test();
     init();
     glutIdleFunc(glutPostRedisplay);
     glutDisplayFunc(display);
