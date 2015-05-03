@@ -43,17 +43,15 @@ float lpos[] = {1000, 1000, 1000, 0};
 
 std::vector<Joint> jointlist;
 Vector systemend;
-Vector lastend;
 Vector goal;
 float t = 0;
-float stepsize = 0.1;
 
 //****************************************************
 // Inverse Kinematics Solver
 //****************************************************
 
 Vector goalFunction(float t) {
-    return Vector(5 * sin(t), 5 * sin(t) * cos(t), 0);
+    return Vector(5 * sin(t), 5 * cos(t), 0);
 }
 
 MatrixXf pseudoinvert(MatrixXf m) {
@@ -96,50 +94,74 @@ MatrixXf rotation_matrix(Vector rot) {
 
 void update_system() {
     int numJoints = jointlist.size();
-    Vector diff = goal - systemend;
-    diff = diff.normalize() * stepsize;
-    Vector3f diff_c(diff.x, diff.y, diff.z);
-    MatrixXf jacobian(3, 0);
-
+    std::vector<Joint> newjoints;
     for (int i = 0; i < numJoints; i++) {
-        Vector3f localp(0, 0, 0);
-        for (int j = numJoints - 1; j >= i; j--) {
-            Joint inter = jointlist.at(j);
-            Vector3f translate(inter.length, 0, 0);
-            localp += translate;
-            localp = rotation_matrix(inter.rotation) * localp;
+        newjoints.push_back(jointlist.at(i));
+    }
+    float olddiff = (goal - systemend).len();
+    float stepsize = 0.01;
+
+    while ((goal - systemend).len() > 1e-7) { 
+        Vector diff = goal - systemend;
+        diff = diff.normalize() * stepsize;
+        Vector3f diff_c(diff.x, diff.y, diff.z);
+        MatrixXf jacobian(3, 0);
+
+        for (int i = 0; i < numJoints; i++) {
+            Vector3f localp(0, 0, 0);
+            for (int j = numJoints - 1; j >= i; j--) {
+                Joint inter = jointlist.at(j);
+                Vector3f translate(inter.length, 0, 0);
+                localp += translate;
+                localp = rotation_matrix(inter.rotation) * localp;
+            }
+            MatrixXf localjacobian(3, 3);
+            localjacobian << 0, -localp(2), localp(1),
+                             localp(2), 0, -localp(0),
+                             -localp(1), localp(0), 0;
+            for (int k = i - 1; k >= 0; k--) {
+                Joint prev = jointlist.at(k);
+                localjacobian = rotation_matrix(prev.rotation) * localjacobian;
+            }
+            MatrixXf temp(3, jacobian.cols() + 3);
+            temp << jacobian, localjacobian * -1;
+            jacobian = temp;
         }
-        MatrixXf localjacobian(3, 3);
-        localjacobian << 0, -localp(2), localp(1),
-                         localp(2), 0, -localp(0),
-                         -localp(1), localp(0), 0;
-        for (int k = i - 1; k >= 0; k--) {
-            Joint prev = jointlist.at(k);
-            localjacobian = rotation_matrix(prev.rotation) * localjacobian;
+
+        MatrixXf pseudo;
+        pseudo = pseudoinvert(jacobian);
+
+        MatrixXf dr;
+        dr = pseudo * diff_c;
+
+        for (int i = 0; i < numJoints; i++) {
+            Joint newjoint = jointlist.at(i);
+            newjoint.rotation += Vector(dr(i*3, 0), dr(i*3 + 1, 0), dr(i*3 + 2, 0));
+            newjoints.push_back(newjoint);
         }
-        MatrixXf temp(3, jacobian.cols() + 3);
-        temp << jacobian, localjacobian * -1;
-        jacobian = temp;
+
+        Vector3f tempend_c(0, 0, 0);
+        for (int i = numJoints - 1; i >= 0; i--) {
+            Joint current = newjoints.at(i);
+            Vector3f translate(current.length, 0, 0);
+            tempend_c += translate;
+            tempend_c = rotation_matrix(current.rotation) * tempend_c;
+        }
+        Vector tempend = Vector(tempend_c(0), tempend_c(1), tempend_c(2));
+
+        if ((goal - tempend).len() > olddiff) {
+            stepsize /= 2;
+        } else {
+            for (int i = 0; i < numJoints; i++) {
+                jointlist[i] = newjoints.at(i);
+            }
+            systemend = tempend;
+            olddiff = (goal - systemend).len();
+        }
+
+        if (stepsize < 1e-7)
+            break;
     }
-
-    MatrixXf pseudo;
-    pseudo = pseudoinvert(jacobian);
-
-    MatrixXf dr;
-    dr = pseudo * diff_c;
-
-    for (int i = 0; i < numJoints; i++) {
-        jointlist[i].rotation += Vector(dr(i*3, 0), dr(i*3 + 1, 0), dr(i*3 + 2, 0));
-    }
-
-    Vector3f tempend(0, 0, 0);
-    for (int i = numJoints - 1; i >= 0; i--) {
-        Joint current = jointlist.at(i);
-        Vector3f translate(current.length, 0, 0);
-        tempend += translate;
-        tempend = rotation_matrix(current.rotation) * tempend;
-    }
-    systemend = Vector(tempend(0), tempend(1), tempend(2));
 }
 
 //****************************************************
@@ -162,7 +184,6 @@ void init(){
         tempend = rotation_matrix(current.rotation) * tempend;
     }
     systemend = Vector(tempend(0), tempend(1), tempend(2));
-    lastend = systemend;
     goal = goalFunction(t);
 
     glEnable(GL_DEPTH_TEST);
@@ -184,17 +205,9 @@ void display() {
             0, 0, 0,
             0, 1, 0);
 
-    float iterations = 0;
-
-    while ((goal - systemend).len() >= stepsize) {
-        update_system();
-        if ((lastend - systemend).len() < stepsize)
-            break;
-        else
-            lastend = systemend;
-    }
-
     int numJoints = jointlist.size();
+
+    update_system();
 
     for (int i = 0; i < numJoints; i++) {
         Joint current = jointlist.at(i);
