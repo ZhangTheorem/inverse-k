@@ -51,7 +51,7 @@ float t = 0;
 //****************************************************
 
 Vector goalFunction(float t) {
-    return Vector(5 * sin(t), 5 * cos(t), 0);
+    return Vector(2.5 * sin(t), 2.5 * cos(t), 0);
 }
 
 MatrixXf pseudoinvert(MatrixXf m) {
@@ -94,14 +94,14 @@ MatrixXf rotation_matrix(Vector rot) {
 
 void update_system() {
     int numJoints = jointlist.size();
+    float olddiff = (goal - systemend).len();
+    float stepsize = 0.01;
     std::vector<Joint> newjoints;
     for (int i = 0; i < numJoints; i++) {
         newjoints.push_back(jointlist.at(i));
     }
-    float olddiff = (goal - systemend).len();
-    float stepsize = 0.01;
 
-    while ((goal - systemend).len() > 1e-7) { 
+    while ((goal - systemend).len() > 1e-7) {
         Vector diff = goal - systemend;
         diff = diff.normalize() * stepsize;
         Vector3f diff_c(diff.x, diff.y, diff.z);
@@ -124,7 +124,7 @@ void update_system() {
                 localjacobian = rotation_matrix(prev.rotation) * localjacobian;
             }
             MatrixXf temp(3, jacobian.cols() + 3);
-            temp << jacobian, localjacobian * -1;
+            temp << localjacobian * -1, jacobian;
             jacobian = temp;
         }
 
@@ -135,9 +135,9 @@ void update_system() {
         dr = pseudo * diff_c;
 
         for (int i = 0; i < numJoints; i++) {
-            Joint newjoint = jointlist.at(i);
+            Joint newjoint = jointlist.at(numJoints - 1 - i);
             newjoint.rotation += Vector(dr(i*3, 0), dr(i*3 + 1, 0), dr(i*3 + 2, 0));
-            newjoints.push_back(newjoint);
+            newjoints[numJoints - 1 - i] = newjoint;
         }
 
         Vector3f tempend_c(0, 0, 0);
@@ -149,7 +149,7 @@ void update_system() {
         }
         Vector tempend = Vector(tempend_c(0), tempend_c(1), tempend_c(2));
 
-        if ((goal - tempend).len() > olddiff) {
+        if ((goal - tempend).len() >= olddiff) {
             stepsize /= 2;
         } else {
             for (int i = 0; i < numJoints; i++) {
