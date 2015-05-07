@@ -46,6 +46,7 @@ std::vector<Joint> newjoints;
 Vector systemend;
 Vector newend;
 Vector goal;
+Vector fakeGoal;
 float stepsize = 1;
 float t = 0;
 bool test = true;
@@ -55,7 +56,8 @@ bool test = true;
 //****************************************************
 
 Vector goalFunction(float t) {
-    return Vector(3 * sin(t), 3 * cos(t) * sin(t), 0);
+    //return Vector(1.25 + 1.25*cos(t), 1.25*sin(t), 2.5*sin(t/2));
+    return Vector(3 * sin(t), 3*sin(t)*cos(t), 0);
 }
 
 MatrixXf pseudoinvert(MatrixXf m) {
@@ -98,7 +100,7 @@ MatrixXf rotation_matrix(Vector rot) {
 
 void update_system() {
     int numJoints = jointlist.size();
-    Vector diff = (goal - systemend) * stepsize;
+    Vector diff = (fakeGoal - systemend) * stepsize;
     // diff = diff.normalize() * stepsize;
     Vector3f diff_c(diff.x, diff.y, diff.z);
     MatrixXf jacobian(3, 0);
@@ -119,13 +121,14 @@ void update_system() {
             Joint prev = jointlist.at(k);
             localjacobian = rotation_matrix(prev.rotation) * localjacobian;
         }
-        for (int l = 0; l < 3; l++) {
-            for (int m = 0; m < 3; m++) {
-                if (localjacobian(l, m) != 0) {
-                    localjacobian(l, m) *= -1;
-                }
-            }
-        }
+        localjacobian *= -1.0;
+        // for (int l = 0; l < 3; l++) {
+        //     for (int m = 0; m < 3; m++) {
+        //         if (localjacobian(l, m) != 0) {
+        //             localjacobian(l, m) *= -1;
+        //         }
+        //     }
+        // }
         MatrixXf temp(3, jacobian.cols() + 3);
         temp << jacobian, localjacobian;
         jacobian = temp;
@@ -211,12 +214,23 @@ void display() {
     int numJoints = jointlist.size();
 
     int iter = 0;
+    float wholething = 0.0;
 
-    while ((systemend - goal).len() > 1e-7) {
+    for(int i = 0; i < numJoints; i++){
+        wholething += jointlist.at(i).length;
+    }
+    if(goal.len() > wholething){
+        fakeGoal = goal.normalize() * wholething;
+    }
+    else{
+        fakeGoal = goal;
+    }
+
+    while ((systemend - fakeGoal).len() > 1e-2) {
         iter++;
-        float olddiff = (systemend - goal).len();
+        float olddiff = (systemend - fakeGoal).len();
         update_system();
-        if ((newend - goal).len() >= olddiff) {
+        if ((newend - fakeGoal).len() >= olddiff) {
             stepsize /= 2;
         } else {
             for (int i = 0; i < numJoints; i++) {
@@ -224,7 +238,7 @@ void display() {
                 systemend = newend;
             }
         }
-        if (stepsize < 1e-7) {
+        if (stepsize < 1e-2) {
             for (int i = 0; i < numJoints; i++) {
                 jointlist[i] = newjoints.at(i);
                 systemend = newend;
@@ -308,13 +322,13 @@ void special(int key, int x, int y) {
 
 int main(int argc, char *argv[]) {
     Joint root = Joint(1, Vector());
-    // Joint arm1 = Joint(0.75, Vector());
-    // Joint arm2 = Joint(0.5, Vector());
-    // Joint arm3 = Joint(0.25, Vector());
+    Joint arm1 = Joint(0.75, Vector());
+    Joint arm2 = Joint(0.5, Vector());
+    Joint arm3 = Joint(0.25, Vector());
     jointlist.push_back(root);
-    // jointlist.push_back(arm1);
-    // jointlist.push_back(arm2);
-    // jointlist.push_back(arm3);
+    jointlist.push_back(arm1);
+    jointlist.push_back(arm2);
+    jointlist.push_back(arm3);
 
     glutInit(&argc, argv);
     glutInitDisplayMode(mode);
