@@ -47,7 +47,7 @@ Vector systemend;
 Vector newend;
 Vector goal;
 Vector fakeGoal;
-float stepsize = 1;
+float stepsize = 0.8;
 float t = 0;
 bool test = true;
 
@@ -57,7 +57,10 @@ bool test = true;
 
 Vector goalFunction(float t) {
     //return Vector(1.25 + 1.25*cos(t), 1.25*sin(t), 2.5*sin(t/2));
-    return Vector(3 * sin(t), 3*sin(t)*cos(t), 0);
+    //return Vector(3 * sin(t), 3*sin(t)*cos(t), 0);
+    //return Vector(1.5 + 1.5*cos(t), 1.5*sin(t), 3*sin(t/2));
+    //return Vector(1 + cos(t), sin(t), 2*sin(t/2));
+    return Vector(1.5*cos(t), 1.5*sin(t), 1);
 }
 
 MatrixXf pseudoinvert(MatrixXf m) {
@@ -274,11 +277,22 @@ void display() {
         glPopMatrix();
     }
 
-    glPushMatrix();
-    glTranslatef(goal.x, goal.y, goal.z);
-    glColor3f(1, 1, 0);
-    glutSolidSphere(0.1, 50, 50);
-    glPopMatrix();
+    // glPushMatrix();
+    // glTranslatef(goal.x, goal.y, goal.z);
+    // glColor3f(1, 1, 0);
+    // glutSolidSphere(0.1, 50, 50);
+    // glPopMatrix();
+
+    Vector frozenGoal;
+    for(float i = 0.0; i <= 4 * M_PI; i += M_PI / 18){
+        frozenGoal = goalFunction(i);
+        glPushMatrix();
+        glTranslatef(frozenGoal.x, frozenGoal.y, frozenGoal.z);
+        glColor3f(1, 1, 0);
+        glutSolidSphere(0.03, 50, 50);
+        glPopMatrix();
+    }
+
 
     t += 0.01;
     goal = goalFunction(t);
