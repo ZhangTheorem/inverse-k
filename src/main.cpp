@@ -270,7 +270,7 @@ void display() {
                 glTranslatef(0.1, 0, 0);
                 glRotatef(90, 0, 1, 0);
                 glColor3f(1, 1, 1);
-                gluCylinder(gluNewQuadric(), 0.1, 0.1, current.length - 0.2, 50, 50);
+                gluCylinder(gluNewQuadric(), 0.1, 0, current.length - 0.2, 50, 50);
             glPopMatrix();
             glColor3f(1, 0, 0);
             glutSolidSphere(0.1, 50, 50);
