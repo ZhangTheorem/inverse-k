@@ -45,12 +45,18 @@ std::vector<Joint> jointlist;
 std::vector<Joint> jointlist2;
 std::vector<Joint> newjoints;
 Vector systemend;
+Vector systemend2;
 Vector newend;
+Vector newend2;
 Vector goal;
+Vector goal2;
 Vector fakeGoal;
+Vector fakeGoal2;
 float stepsize = 1;
 float t = 0;
+float t2 = -0.5;
 bool test = true;
+bool system2 = false;
 
 //****************************************************
 // Inverse Kinematics Solver
@@ -61,11 +67,12 @@ Vector goalFunction(float t) {
     //return Vector(3 * sin(t), 3*sin(t)*cos(t), 0);
     //return Vector(1.5 + 1.5*cos(t), 1.5*sin(t), 3*sin(t/2));
     //return Vector(1 + cos(t), sin(t), 2*sin(t/2));
-    //return Vector(2*sin(t/2) - 1, cos(t), sin(t) - 1);
+    return Vector(3 * pow(cos(t), 4) / pow(1 + pow(sin(t), 2), 2),
+                  3 * cos(t) * sin(2 * t) / pow(1 + pow(sin(t), 2), 2),
+                  3 * sin(2 * t) / sqrt(2) / (1 + pow(sin(t), 2)));
+    //return Vector(3*sin(t/2) - 1, 0.5 + 1.5*cos(t), 1.5*sin(t) - 1);
     //return Vector(sin(t), 2*sin(t/2), 1 + cos(t));
     //return Vector(3.5*cos(t), 3.5*sin(t), 0);
-    //return Vector(t,t,t);
-    //return Vector(0,0,0);
 }
 
 MatrixXf pseudoinvert(MatrixXf m) {
@@ -172,13 +179,6 @@ MatrixXf analytic_jacobian(std::vector<Joint> list) {
             localjacobian = rotation_matrix(prev.rotation) * localjacobian;
         }
         localjacobian *= -1.0;
-        // for (int l = 0; l < 3; l++) {
-        //     for (int m = 0; m < 3; m++) {
-        //         if (localjacobian(l, m) != 0) {
-        //             localjacobian(l, m) *= -1;
-        //         }
-        //     }
-        // }
         MatrixXf temp(3, jacobian.cols() + 3);
         temp << jacobian, localjacobian;
         jacobian = temp;
@@ -187,66 +187,25 @@ MatrixXf analytic_jacobian(std::vector<Joint> list) {
     return jacobian;
 }
 
-void update_system(std::vector<Joint> list) {
+Vector update_system(std::vector<Joint> list, int sys) {
     int numJoints = list.size();
-    Vector diff = (fakeGoal - systemend) * stepsize;
-    // diff = diff.normalize() * stepsize;
+    Vector diff;
+    if (sys == 2) {
+        diff = (fakeGoal2 - systemend2) * stepsize;
+    } else {
+        diff = (fakeGoal - systemend) * stepsize;
+    }
     Vector3f diff_c(diff.x, diff.y, diff.z);
-    // MatrixXf jacobian(3, 0);
-
-    // for (int i = 0; i < numJoints; i++) {
-    //     Vector3f localp(0, 0, 0);
-    //     for (int j = numJoints - 1; j >= i; j--) {
-    //         Joint inter = list.at(j);
-    //         Vector3f translate(inter.length, 0, 0);
-    //         localp += translate;
-    //         localp = rotation_matrix(inter.rotation) * localp;
-    //     }
-    //     MatrixXf localjacobian(3, 3);
-    //     localjacobian << 0, -localp(2), localp(1),
-    //                      localp(2), 0, -localp(0),
-    //                      -localp(1), localp(0), 0;
-    //     for (int k = i - 1; k >= 0; k--) {
-    //         Joint prev = list.at(k);
-    //         localjacobian = rotation_matrix(prev.rotation) * localjacobian;
-    //     }
-    //     localjacobian *= -1.0;
-    //     // for (int l = 0; l < 3; l++) {
-    //     //     for (int m = 0; m < 3; m++) {
-    //     //         if (localjacobian(l, m) != 0) {
-    //     //             localjacobian(l, m) *= -1;
-    //     //         }
-    //     //     }
-    //     // }
-    //     MatrixXf temp(3, jacobian.cols() + 3);
-    //     temp << jacobian, localjacobian;
-    //     jacobian = temp;
-    // }
 
     MatrixXf jacobian = numeric_jacobian(list);
-
-    // if (test)
-    //     std::cout << jacobian << std::endl;
-
-    // test = false;
-
-    // MatrixXf pseudo;
-    // pseudo = pseudoinvert(jacobian);
-
     JacobiSVD<MatrixXf> svd(jacobian, ComputeThinU | ComputeThinV);
-
     MatrixXf dr;
-    // dr = pseudo * diff_c;
 
     dr = svd.solve(diff_c);
 
     for (int i = 0; i < numJoints; i++) {
         Joint newjoint = list.at(i);
         newjoint.rotation += Vector(dr(i*3, 0), dr(i*3 + 1, 0), dr(i*3 + 2, 0));
-        // if ((newjoint.rotation.len() - M_PI) < 1e-7) {
-        //     float reparam = (1 - 2 * M_PI) / newjoint.rotation.len();
-        //     newjoint.rotation = reparam * newjoint.rotation;
-        // }
         newjoints[i] = newjoint;
     }
 
@@ -257,7 +216,7 @@ void update_system(std::vector<Joint> list) {
         tempend += translate;
         tempend = rotation_matrix(current.rotation) * tempend;
     }
-    newend = Vector(tempend(0), tempend(1), tempend(2));
+    return Vector(tempend(0), tempend(1), tempend(2));
 }
 
 //****************************************************
@@ -275,13 +234,24 @@ void init(){
     Vector3f tempend(0, 0, 0);
     for (int i = numJoints - 1; i >= 0; i--) {
         Joint current = jointlist.at(i);
-        newjoints.push_back(current);
         Vector3f translate(current.length, 0, 0);
         tempend += translate;
         tempend = rotation_matrix(current.rotation) * tempend;
     }
     systemend = Vector(tempend(0), tempend(1), tempend(2));
     goal = goalFunction(t);
+
+    int numJoints2 = jointlist2.size();
+    Vector3f tempend2(0, 0, 0);
+    for (int i = numJoints2 - 1; i >= 0; i--) {
+        Joint current = jointlist2.at(i);
+        newjoints.push_back(current);
+        Vector3f translate(current.length, 0, 0);
+        tempend2 += translate;
+        tempend2 = rotation_matrix(current.rotation) * tempend2;
+    }
+    systemend2 = Vector(tempend2(0), tempend2(1), tempend2(2));
+    goal2 = goalFunction(t2);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -298,13 +268,12 @@ void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_MODELVIEW);    
     glLoadIdentity();
-    gluLookAt(0, 0, -5,
+    gluLookAt(-2, 0, -5,
             0, 0, 0,
             0, 1, 0);
 
     int numJoints = jointlist.size();
 
-    int iter = 0;
     float wholething = 0.0;
 
     for(int i = 0; i < numJoints; i++){
@@ -318,9 +287,8 @@ void display() {
     }
 
     while ((systemend - fakeGoal).len() > 1e-2) {
-        iter++;
         float olddiff = (systemend - fakeGoal).len();
-        update_system(jointlist);
+        Vector newend = update_system(jointlist, 1);
         if ((newend - fakeGoal).len() >= olddiff) {
             stepsize /= 2;
         } else {
@@ -339,8 +307,6 @@ void display() {
         }
     }
     stepsize = 1;
-    //std::cout << iter << std::endl;
-
     for (int i = 0; i < numJoints; i++) {
         Joint current = jointlist.at(i);
         Vector rot = current.rotation;
@@ -365,38 +331,8 @@ void display() {
         glPopMatrix();
     }
 
-    // for (int i = 0; i < numJoints; i++) {
-    //     Joint current = jointlist2.at(i);
-    //     Vector rot = current.rotation;
-    //     float angle = rot.len() * 180 / M_PI;
-    //     glPushMatrix();
-    //         for (int j = 0; j < i; j++) {
-    //             Joint prev = jointlist2.at(j);
-    //             Vector prevrot = prev.rotation;
-    //             float prevangle = prevrot.len() * 180 / M_PI;
-    //             glRotatef(prevangle, prevrot.x, prevrot.y, prevrot.z);
-    //             glTranslatef(prev.length, 0, 0);
-    //         }
-    //         glRotatef(angle, rot.x, rot.y, rot.z);
-    //         glPushMatrix();
-    //             glTranslatef(-0.5, 0, 0);
-    //             glRotatef(-90, 0, 1, 0);
-    //             glColor3f(1, 1, 1);
-    //             gluCylinder(gluNewQuadric(), 0.1, 0.1, current.length - 0.2, 50, 50);
-    //         glPopMatrix();
-    //         glColor3f(1, 0, 0);
-    //         glutSolidSphere(0.1, 50, 50);
-    //     glPopMatrix();
-    // }
-
-    // glPushMatrix();
-    // glTranslatef(goal.x, goal.y, goal.z);
-    // glColor3f(1, 1, 0);
-    // glutSolidSphere(0.1, 50, 50);
-    // glPopMatrix();
-
     Vector frozenGoal;
-    for(float i = 0.0; i <= 4 * M_PI; i += M_PI / 18){
+    for(float i = 0.0; i <= 4 * M_PI; i += M_PI / 36){
         frozenGoal = goalFunction(i);
         glPushMatrix();
         glTranslatef(frozenGoal.x, frozenGoal.y, frozenGoal.z);
@@ -408,6 +344,77 @@ void display() {
 
     t += 0.01;
     goal = goalFunction(t);
+
+    if (system2) {
+        int numJoints2 = jointlist2.size();
+        float wholething2 = 0.0;
+
+        for(int i = 0; i < numJoints2; i++){
+            wholething2 += jointlist2.at(i).length;
+        }
+        if(goal2.len() > wholething2){
+            fakeGoal2 = goal2.normalize() * wholething2;
+        }
+        else{
+            fakeGoal2 = goal2;
+        }
+
+        while ((systemend2 - fakeGoal2).len() > 1e-2) {
+            float olddiff = (systemend2 - fakeGoal2).len();
+            Vector newend2 = update_system(jointlist2, 2);
+            if ((newend2 - fakeGoal2).len() >= olddiff) {
+                stepsize /= 2;
+            } else {
+                for (int i = 0; i < numJoints2; i++) {
+                    jointlist2[i] = newjoints.at(i);
+                    systemend2 = newend2;
+                }
+            }
+            if (stepsize < 1e-2) {
+                for (int i = 0; i < numJoints2; i++) {
+                    jointlist2[i] = newjoints.at(i);
+                    systemend2 = newend2;
+                }
+                stepsize = 1;
+                break;
+            }
+        }
+        stepsize = 1;
+
+        for (int i = 0; i < numJoints2; i++) {
+            Joint current = jointlist2.at(i);
+            Vector rot = current.rotation;
+            float angle = rot.len() * 180 / M_PI;
+            glPushMatrix();
+                for (int j = 0; j < i; j++) {
+                    Joint prev = jointlist2.at(j);
+                    Vector prevrot = prev.rotation;
+                    float prevangle = prevrot.len() * 180 / M_PI;
+                    glRotatef(prevangle, prevrot.x, prevrot.y, prevrot.z);
+                    glTranslatef(prev.length, 0, 0);
+                }
+                glRotatef(angle, rot.x, rot.y, rot.z);
+                glPushMatrix();
+                    glTranslatef(0.1, 0, 0);
+                    glRotatef(90, 0, 1, 0);
+                    glColor3f(0.25, 0.25, 0.25);
+                    gluCylinder(gluNewQuadric(), 0.1, 0.1, current.length - 0.2, 50, 50);
+                glPopMatrix();
+                glColor3f(0, 0, 1);
+                if (i != 0)
+                    glutSolidSphere(0.1, 50, 50);
+            glPopMatrix();
+        }
+
+        t2 += 0.01;
+        goal2 = goalFunction(t2);
+    }
+
+    // glPushMatrix();
+    // glTranslatef(goal.x, goal.y, goal.z);
+    // glColor3f(1, 1, 0);
+    // glutSolidSphere(0.1, 50, 50);
+    // glPopMatrix();
 
     glFlush();
     glutSwapBuffers();
@@ -456,15 +463,16 @@ int main(int argc, char *argv[]) {
     jointlist.push_back(arm2);
     jointlist.push_back(arm3);
 
-    // Joint root2 = Joint(1.5, Vector());
-    // Joint arm12 = Joint(1, Vector());
-    // Joint arm22 = Joint(0.75, Vector());
-    // Joint arm32 = Joint(0.5, Vector());
-    // jointlist2.push_back(root2);
-    // jointlist2.push_back(arm12);
-    // jointlist2.push_back(arm22);
-    // jointlist2.push_back(arm32);
-
+    Joint root2 = Joint(1.2, Vector());
+    Joint arm12 = Joint(0.8, Vector());
+    Joint arm22 = Joint(0.6, Vector());
+    Joint arm32 = Joint(0.4, Vector());
+    Joint arm42 = Joint(0.6, Vector());
+    jointlist2.push_back(root2);
+    jointlist2.push_back(arm12);
+    jointlist2.push_back(arm22);
+    jointlist2.push_back(arm32);
+    jointlist2.push_back(arm42);
 
     glutInit(&argc, argv);
     glutInitDisplayMode(mode);
